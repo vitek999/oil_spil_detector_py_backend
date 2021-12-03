@@ -148,8 +148,8 @@ def get_predict():
     print(result)
     return str(result[0])
 
-if __name__ == '__main__':
-    app.run(port=8081)
+# if __name__ == '__main__':
+#     app.run(port=8081)
 
 # print(get_image_data([73.03322551561014, 60.588367153736506, 73.04455362140644, 60.59428130212325], 64, 64,
 #                      test_start_date, test_end_date)[0].shape)
