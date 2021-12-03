@@ -1,11 +1,18 @@
 from flask import Flask, jsonify, request
+from matplotlib import pyplot as plt
 from sentinelhub import SHConfig
 from sentinelhub import MimeType, CRS, BBox, SentinelHubRequest, DataCollection
 import numpy as np
+import pickle
+
+from sklearn import preprocessing
 
 CLIENT_ID = ''
 CLIENT_SECRET = ''
 INSTANCE_ID = ''
+
+with open('pickle_model.pkl', 'rb') as f:
+    model = pickle.load(f)
 
 config = SHConfig()
 
@@ -50,6 +57,20 @@ evalscript_all_bands = """
 """
 
 
+def plot_image(image, factor=1.0, clip_range=None, **kwargs):
+    """
+    Utility function for plotting RGB images.
+    """
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(15, 15))
+    if clip_range is not None:
+        ax.imshow(np.clip(image * factor, *clip_range), **kwargs)
+    else:
+        ax.imshow(image * factor, **kwargs)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    plt.show()
+
+
 def get_image_data(bbox, height, width, start_date, end_date):
     request_size = (width, height)
     request_bbox = BBox(bbox=bbox, crs=CRS.WGS84)
@@ -77,6 +98,14 @@ def get_image_data(bbox, height, width, start_date, end_date):
 app = Flask(__name__)
 
 
+def toNormalize(dataset):
+    x, y, c = dataset.shape
+    d2_dataset = dataset.reshape((x,y*c))
+    norm_dataset = preprocessing.normalize(d2_dataset)
+
+    return norm_dataset.reshape(x, y)
+
+
 @app.route('/image', methods=['GET'])
 def get_image():
     request_height = request.args.get('height', 64)
@@ -89,6 +118,35 @@ def get_image():
     print(res[0].shape)
     return jsonify({"data": np.asarray(res).tolist()})
 
+
+@app.route('/predict', methods=['GET'])
+def get_predict():
+    request_height = request.args.get('height', 64)
+    request_width = request.args.get('width', 64)
+    request_bbox = request.args.get('bbox').split(',')
+    request_date_start = request.args.get('date_start')
+    request_date_end = request.args.get('date_end')
+    res = get_image_data(request_bbox, request_height, request_width, request_date_start, request_date_end)
+
+    #plot_image(res[0][:, :, [3,2,1]], factor=3.5 / 1e4, vmax=1)
+
+    res = np.asarray(res)
+
+    print(res)
+
+    v_min = res.min(axis=(0, 1), keepdims=True)
+    v_max = res.max(axis=(0, 1), keepdims=True)
+    res = (res - v_min) / (v_max - v_min)
+
+    print(res)
+
+    c, x, y, z = res.shape
+    print(c)
+    data_x = np.reshape(res, (c, x * y * z))
+
+    result = model.predict(data_x)
+    print(result)
+    return str(result[0])
 
 if __name__ == '__main__':
     app.run(port=8081)
